@@ -20,7 +20,6 @@ class SeaBattle:
         self.root.title("Морской Бой")
         self.root.resizable(False, False)
         
-        # Константы
         self.BOARD_SIZE = 10
         self.CELL_SIZE = 30
         self.MARGIN = 2
@@ -28,15 +27,19 @@ class SeaBattle:
         self.BOARD2_X = 400
         self.BOARD_Y = 80
         
-        # Игровые переменные
         self.player_board = [[0 for _ in range(self.BOARD_SIZE)] for _ in range(self.BOARD_SIZE)]
         self.enemy_board = [[0 for _ in range(self.BOARD_SIZE)] for _ in range(self.BOARD_SIZE)]
         
-        self.player_ships = [Ship(3), Ship(2), Ship(1)]
+        self.player_ships = [Ship(4)] + [Ship(3) for _ in range(2)] + [Ship(2) for _ in range(3)] + [Ship(1) for _ in range(4)]
         self.current_ship_index = 0
         self.placing_ships = True
         
-        self.enemy_ships = [Ship(3), Ship(2), Ship(1)]
+        self.enemy_ships = [Ship(4)] + [Ship(3) for _ in range(2)] + [Ship(2) for _ in range(3)] + [Ship(1) for _ in range(4)]
+        
+        self.enemy_target_mode = False
+        self.last_hit = None
+        self.target_direction = None
+        self.potential_targets = []
         
         self.game_over = False
         self.winner = None
@@ -46,33 +49,35 @@ class SeaBattle:
         self.place_enemy_ships()
         
     def setup_ui(self):
-        # Создание canvas для отрисовки
         self.canvas = tk.Canvas(self.root, width=800, height=600, bg='lightgray')
         self.canvas.pack()
         
-        # Кнопка перезапуска
         self.restart_btn = tk.Button(self.root, text="Перезапуск (R)", command=self.reset_game)
         self.restart_btn.pack(pady=5)
         
-        # Привязка клавиш
         self.root.bind('<KeyPress-r>', lambda e: self.reset_game())
         self.root.bind('<KeyPress-R>', lambda e: self.reset_game())
         self.canvas.bind('<Button-1>', self.on_click)
         self.canvas.bind('<Button-3>', self.on_right_click)
         self.canvas.bind('<Motion>', self.on_mouse_move)
         
-        # Фокус на canvas для обработки событий клавиатуры
         self.canvas.focus_set()
         
     def reset_game(self):
         self.player_board = [[0 for _ in range(self.BOARD_SIZE)] for _ in range(self.BOARD_SIZE)]
         self.enemy_board = [[0 for _ in range(self.BOARD_SIZE)] for _ in range(self.BOARD_SIZE)]
         
-        self.player_ships = [Ship(3), Ship(2), Ship(1)]
+        self.player_ships = [Ship(4)] + [Ship(3) for _ in range(2)] + [Ship(2) for _ in range(3)] + [Ship(1) for _ in range(4)]
         self.current_ship_index = 0
         self.placing_ships = True
         
-        self.enemy_ships = [Ship(3), Ship(2), Ship(1)]
+        self.enemy_ships = [Ship(4)] + [Ship(3) for _ in range(2)] + [Ship(2) for _ in range(3)] + [Ship(1) for _ in range(4)]
+        
+        self.enemy_target_mode = False
+        self.last_hit = None
+        self.target_direction = None
+        self.potential_targets = []
+        
         self.place_enemy_ships()
         
         self.game_over = False
@@ -84,7 +89,8 @@ class SeaBattle:
     def place_enemy_ships(self):
         for ship in self.enemy_ships:
             placed = False
-            while not placed:
+            attempts = 0
+            while not placed and attempts < 100:
                 row = random.randint(0, self.BOARD_SIZE - 1)
                 col = random.randint(0, self.BOARD_SIZE - 1)
                 direction = random.choice(['h', 'v'])
@@ -92,6 +98,15 @@ class SeaBattle:
                 if self.can_place_ship(self.enemy_board, ship.size, row, col, direction):
                     self.place_ship_on_board(self.enemy_board, ship, row, col, direction)
                     placed = True
+                attempts += 1
+            
+            if not placed:
+                self.enemy_board = [[0 for _ in range(self.BOARD_SIZE)] for _ in range(self.BOARD_SIZE)]
+                for s in self.enemy_ships:
+                    s.positions = []
+                    s.placed = False
+                self.place_enemy_ships()
+                return
     
     def can_place_ship(self, board, size, row, col, direction):
         if direction == 'h':
@@ -137,30 +152,25 @@ class SeaBattle:
                 x = x_offset + col * (self.CELL_SIZE + self.MARGIN)
                 y = self.BOARD_Y + row * (self.CELL_SIZE + self.MARGIN)
                 
-                # Рисуем клетку
-                if board[row][col] == 0:  # Пустая клетка
+                if board[row][col] == 0:
                     color = 'white'
-                elif board[row][col] == 1 and show_ships:  # Корабль
+                elif board[row][col] == 1 and show_ships:
                     color = 'blue'
-                elif board[row][col] == 2:  # Промах
+                elif board[row][col] == 2:
                     color = 'lightgray'
-                elif board[row][col] == 3:  # Попадание
+                elif board[row][col] == 3:
                     color = 'red'
-                else:  # Корабль противника (не показываем)
+                else:
                     color = 'white'
                 
                 self.canvas.create_rectangle(x, y, x + self.CELL_SIZE, y + self.CELL_SIZE, 
                                            fill=color, outline='black')
                 
-                # Рисуем отметки
-                if board[row][col] == 2:  # Крестик для промаха
+                if board[row][col] == 2:
                     self.canvas.create_line(x + 5, y + 5, x + self.CELL_SIZE - 5, y + self.CELL_SIZE - 5, 
                                           width=2, fill='black')
                     self.canvas.create_line(x + self.CELL_SIZE - 5, y + 5, x + 5, y + self.CELL_SIZE - 5, 
                                           width=2, fill='black')
-                elif board[row][col] == 3:  # Закрашенный красный для попадания
-                    self.canvas.create_rectangle(x, y, x + self.CELL_SIZE, y + self.CELL_SIZE, 
-                                               fill='red', outline='black')
     
     def draw_ship_preview(self, x, y):
         if self.placing_ships and self.current_ship_index < len(self.player_ships):
@@ -192,21 +202,17 @@ class SeaBattle:
                                                        fill=color, outline='black', width=2)
     
     def draw_text(self):
-        # Заголовок
         self.canvas.create_text(400, 30, text="МОРСКОЙ БОЙ", 
                                font=("Arial", 20, "bold"), fill='black')
         
-        # Названия полей
         self.canvas.create_text(self.BOARD1_X + 150, self.BOARD_Y - 30, 
                                text="ВАШЕ ПОЛЕ", font=("Arial", 14, "bold"), fill='black')
         self.canvas.create_text(self.BOARD2_X + 150, self.BOARD_Y - 30, 
                                text="ПОЛЕ ПРОТИВНИКА", font=("Arial", 14, "bold"), fill='black')
         
-        # Сообщение
         self.canvas.create_text(400, 500, text=self.message, 
                                font=("Arial", 14), fill='black')
         
-        # Инструкции
         if self.placing_ships:
             instructions = "ЛКМ - разместить корабль, ПКМ - повернуть"
         else:
@@ -254,7 +260,17 @@ class SeaBattle:
                 self.current_ship_index += 1
                 
                 if self.current_ship_index < len(self.player_ships):
-                    self.message = f"Разместите корабль размером {self.player_ships[self.current_ship_index].size}"
+                    ship_type = ""
+                    if self.player_ships[self.current_ship_index].size == 4:
+                        ship_type = "линкор"
+                    elif self.player_ships[self.current_ship_index].size == 3:
+                        ship_type = "крейсер"
+                    elif self.player_ships[self.current_ship_index].size == 2:
+                        ship_type = "эсминец"
+                    else:
+                        ship_type = "катер"
+                    
+                    self.message = f"Разместите {ship_type} размером {self.player_ships[self.current_ship_index].size}"
                 else:
                     self.placing_ships = False
                     self.message = "Ваш ход! Стреляйте по полю противника"
@@ -275,8 +291,18 @@ class SeaBattle:
                 for ship in self.enemy_ships:
                     if (row, col) in ship.positions:
                         ship.hits += 1
+                        ship_type = ""
+                        if ship.size == 4:
+                            ship_type = "линкор"
+                        elif ship.size == 3:
+                            ship_type = "крейсер"
+                        elif ship.size == 2:
+                            ship_type = "эсминец"
+                        else:
+                            ship_type = "катер"
+                        
                         if ship.is_sunk():
-                            self.message = f"Вы потопили корабль размером {ship.size}!"
+                            self.message = f"Вы потопили {ship_type} размером {ship.size}!"
                         break
 
                 if all(ship.is_sunk() for ship in self.enemy_ships):
@@ -290,45 +316,99 @@ class SeaBattle:
                 self.enemy_board[row][col] = 2
                 self.message = "Промах!"
                 
-                # Ход противника
                 self.enemy_turn()
                 return True
         
         return False
     
     def enemy_turn(self):
+        if self.enemy_target_mode and self.last_hit:
+            row, col = self.get_target_shot()
+        else:
+            possible_moves = [(r, c) for r in range(self.BOARD_SIZE) for c in range(self.BOARD_SIZE) 
+                             if self.player_board[r][c] not in [2, 3]]
+            
+            if possible_moves:
+                row, col = random.choice(possible_moves)
+            else:
+                return
+        
+        if self.player_board[row][col] in [2, 3]:
+            if self.enemy_target_mode:
+                if self.potential_targets:
+                    self.potential_targets.pop(0)
+            self.enemy_turn()
+            return
+        
+        if self.player_board[row][col] == 1:
+            self.player_board[row][col] = 3
+            self.message = "Противник попал!"
+
+            self.enemy_target_mode = True
+            self.last_hit = (row, col)
+            
+            self.add_potential_targets(row, col)
+
+            for ship in self.player_ships:
+                if (row, col) in ship.positions:
+                    ship.hits += 1
+                    ship_type = ""
+                    if ship.size == 4:
+                        ship_type = "линкор"
+                    elif ship.size == 3:
+                        ship_type = "крейсер"
+                    elif ship.size == 2:
+                        ship_type = "эсминец"
+                    else:
+                        ship_type = "катер"
+                    
+                    if ship.is_sunk():
+                        self.message = f"Противник потопил ваш {ship_type} размером {ship.size}!"
+                        self.enemy_target_mode = False
+                        self.last_hit = None
+                        self.target_direction = None
+                        self.potential_targets = []
+                    break
+
+            if all(ship.is_sunk() for ship in self.player_ships):
+                self.game_over = True
+                self.winner = "enemy"
+                self.message = "ВЫ ПРОИГРАЛИ!"
+                messagebox.showinfo("Поражение", "Вы проиграли! Попробуйте еще раз.")
+        else:
+            self.player_board[row][col] = 2
+            if self.enemy_target_mode:
+                if self.potential_targets:
+                    self.potential_targets.pop(0)
+    
+    def add_potential_targets(self, row, col):
+        directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+        
+        for dr, dc in directions:
+            r, c = row + dr, col + dc
+            if 0 <= r < self.BOARD_SIZE and 0 <= c < self.BOARD_SIZE:
+                if self.player_board[r][c] not in [2, 3] and (r, c) not in self.potential_targets:
+                    self.potential_targets.append((r, c))
+    
+    def get_target_shot(self):
+        self.potential_targets = [(r, c) for r, c in self.potential_targets 
+                                if self.player_board[r][c] not in [2, 3]]
+        
+        if self.potential_targets:
+            return self.potential_targets[0]
+        
+        self.enemy_target_mode = False
+        self.last_hit = None
         possible_moves = [(r, c) for r in range(self.BOARD_SIZE) for c in range(self.BOARD_SIZE) 
                          if self.player_board[r][c] not in [2, 3]]
-        
-        if possible_moves:
-            row, col = random.choice(possible_moves)
-            
-            if self.player_board[row][col] == 1:
-                self.player_board[row][col] = 3
-
-                for ship in self.player_ships:
-                    if (row, col) in ship.positions:
-                        ship.hits += 1
-                        if ship.is_sunk():
-                            self.message = f"Противник потопил ваш корабль размером {ship.size}!"
-                        break
-
-                if all(ship.is_sunk() for ship in self.player_ships):
-                    self.game_over = True
-                    self.winner = "enemy"
-                    self.message = "ВЫ ПРОИГРАЛИ!"
-                    messagebox.showinfo("Поражение", "Вы проиграли! Попробуйте еще раз.")
-            else:
-                self.player_board[row][col] = 2
+        return random.choice(possible_moves) if possible_moves else (0, 0)
     
     def draw_game(self):
         self.canvas.delete("all")
         
-        # Рисуем доски
         self.draw_board(self.player_board, self.BOARD1_X, show_ships=True)
         self.draw_board(self.enemy_board, self.BOARD2_X, show_ships=False)
         
-        # Рисуем текст и инструкции
         self.draw_text()
     
     def run(self):
